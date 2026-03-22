@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M3 Vibrant Theme Colors (Amber/Orange Primary) -->
+
+    <!-- Light Theme Colors -->
+    <color name="md_theme_light_primary">#FF9800</color>
+    <color name="md_theme_light_onPrimary">#FFFFFF</color>
+    <color name="md_theme_light_secondary">#00796B</color>
+    <color name="md_theme_light_onSecondary">#FFFFFF</color>
+    <color name="md_theme_light_surfaceContainerLow">#FFF8F5F1</color>
+
+    <!-- Dark Theme Colors -->
+    <color name="md_theme_dark_primary">#FFB74D</color>
+    <color name="md_theme_dark_onPrimary">#4E2C00</color>
+    <color name="md_theme_dark_secondary">#81C784</color>
+    <color name="md_theme_dark_onSecondary">#003D33</color>
+    <color name="md_theme_dark_surfaceContainerLow">#201A18</color>
+
+    <!-- Colors used for icon placeholders (can be adjusted later) -->
+    <color name="ic_launcher_background">#FF9800</color>
+</resources>
