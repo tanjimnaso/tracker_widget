@@ -7,9 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -39,7 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: WeightRepository
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                 val viewModel: WeightViewModel = rememberWeightViewModel(application, repository)
                 val window = remember(this) { WindowCompat.getInsetsController(window, window.decorView) }
                 window?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                
+
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     WeightTrackerScreen(viewModel = viewModel)
                 }
@@ -79,156 +79,128 @@ fun WeightTrackerScreen(viewModel: WeightViewModel) {
     var showAddDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
-    
+
     var isLifelongMode by remember { mutableStateOf(false) }
 
     val accentColor = MaterialTheme.colorScheme.primary
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        "Tracker", 
-                        fontWeight = FontWeight.Bold, 
-                        fontFamily = FontFamily.Serif,
-                        color = MaterialTheme.colorScheme.onSurface 
-                    ) 
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        },
-        containerColor = Color.Transparent
-    ) { paddingValues ->
+    // Scaffold with no topBar — paddingValues includes status bar + nav bar insets
+    Scaffold(containerColor = Color.Transparent) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(32.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 20.dp, bottom = 108.dp)
             ) {
-                // 1. Current Weight Section
-                item {
+                // 1. Current Weight + GOAL — tap label to open settings
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
                     Column(horizontalAlignment = Alignment.Start) {
                         Text(
                             "CURRENT WEIGHT",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             letterSpacing = 2.sp,
-                            fontSize = 12.sp
+                            fontSize = 12.sp,
+                            modifier = Modifier.clickable { showSettingsDialog = true }
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(Modifier.height(2.dp))
                         Row(verticalAlignment = Alignment.Bottom) {
                             val displayWeight = state.currentWeightKg ?: state.startingWeightKg
                             Text(
-                                text = String.format(Locale.getDefault(), "%.1f", displayWeight),
-                                fontSize = 88.sp,
+                                String.format(Locale.getDefault(), "%.1f", displayWeight),
+                                fontSize = 72.sp,
                                 fontWeight = FontWeight.Light,
                                 fontFamily = FontFamily.Serif,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 " kg",
-                                fontSize = 28.sp,
+                                fontSize = 22.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 16.dp, start = 4.dp)
+                                modifier = Modifier.padding(bottom = 10.dp, start = 4.dp)
                             )
                         }
                     }
-                }
-
-                // 2. Goal Metric (Replacing Start/Goal/Lost)
-                if (!isLifelongMode) {
-                    item {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                            MetricItem("GOAL", String.format(Locale.getDefault(), "%.1f", state.goalWeightKg))
-                        }
-                    }
-                }
-
-                // 3. Combined Trend / Lifelong Chart Section
-                item {
-                    CombinedChartSection(
-                        isLifelongMode = isLifelongMode,
-                        onToggleMode = { isLifelongMode = !isLifelongMode },
-                        actualPoints = state.chartData,
-                        startingWeight = state.startingWeightKg,
-                        goalWeight = state.goalWeightKg,
-                        minY3Month = minOf(state.goalWeightKg, (state.chartData.minOfOrNull { it.emaWeight } ?: state.goalWeightKg)) - 2.0,
-                        maxY3Month = maxOf(state.startingWeightKg, (state.chartData.maxOfOrNull { it.emaWeight } ?: state.startingWeightKg)) + 2.0,
-                        startDate = state.startDateMillis,
-                        goalDate = state.goalDateMillis,
-                        lifelongData = state.lifelongData,
-                        accentColor = accentColor
-                    )
-                }
-
-                // 4. Overall Progress Bar
-                item {
-                    if (!isLifelongMode) {
-                        Column(modifier = Modifier.offset(y = (-16).dp)) {
-                            val sdf = SimpleDateFormat("MMM yy", Locale.getDefault())
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(sdf.format(Date(state.startDateMillis)).uppercase(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("${state.progressPercentage.toInt()}%", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                Text(sdf.format(Date(state.goalDateMillis)).uppercase(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Box(
-                                Modifier.fillMaxWidth().height(4.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(2.dp))
-                            ) {
-                                Box(
-                                    Modifier.fillMaxHeight().fillMaxWidth((state.progressPercentage/100f).coerceIn(0.01f, 1f)).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-                                )
-                            }
-                        }
-                    } else {
-                        // Show START and GOAL horizontally stacked when in Lifelong mode under the chart
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                            MetricItem("START", String.format(Locale.getDefault(), "%.1f", state.startingWeightKg))
-                            MetricItem("GOAL", String.format(Locale.getDefault(), "%.1f", state.goalWeightKg))
-                        }
-                    }
-                }
-
-                // 5. Progress Stats (Goals)
-                item {
-                    Column {
-                        // Title now clickable to open settings, acting as a clean, hidden settings button
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    ) {
                         Text(
-                            "GOALS",
-                            style = MaterialTheme.typography.labelMedium,
+                            "GOAL",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            letterSpacing = 2.sp,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(bottom = 16.dp).clickable { showSettingsDialog = true }.padding(4.dp)
+                            letterSpacing = 2.sp
                         )
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            StatCard("THIS WEEK", state.thisWeekProjection, state.thisWeekChange, "kg")
-                            StatCard("MONTH END", state.monthEndProjection, state.monthEndChange, "kg")
-                            StatCard("HALFWAY", state.halfwayWeight, state.halfwayDays.toDouble(), "days")
-                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            String.format(Locale.getDefault(), "%.1f", state.goalWeightKg),
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Serif,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 
-                // 6. History
-                item {
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 80.dp, top = 16.dp), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { showHistoryDialog = true }) {
-                            Text("HISTORIC WEIGHTS", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                    }
+                Spacer(Modifier.height(12.dp))
+
+                // 2. Stat Cards — THIS WEEK, MONTH END, HALFWAY
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    StatCard("THIS WEEK", state.thisWeekProjection, state.thisWeekChange, "kg")
+                    StatCard("MONTH END", state.monthEndProjection, state.monthEndChange, "kg")
+                    StatCard("HALFWAY", state.halfwayWeight, state.halfwayDays.toDouble(), "days")
                 }
+
+                Spacer(Modifier.height(12.dp))
+
+                // 3. Chart — tap to toggle, fills remaining space; progress bar is inside
+                CombinedChartSection(
+                    isLifelongMode = isLifelongMode,
+                    onToggleMode = { isLifelongMode = !isLifelongMode },
+                    actualPoints = state.chartData,
+                    startingWeight = state.startingWeightKg,
+                    goalWeight = state.goalWeightKg,
+                    minY3Month = minOf(state.goalWeightKg, (state.chartData.minOfOrNull { it.emaWeight } ?: state.goalWeightKg)) - 2.0,
+                    maxY3Month = maxOf(state.startingWeightKg, (state.chartData.maxOfOrNull { it.emaWeight } ?: state.startingWeightKg)) + 2.0,
+                    startDate = state.startDateMillis,
+                    goalDate = state.goalDateMillis,
+                    lifelongData = state.lifelongData,
+                    accentColor = accentColor,
+                    progressPercentage = state.progressPercentage,
+                    modifier = Modifier.weight(1f)
+                )
             }
 
-            // FAB
+            // History — bottom left
+            TextButton(
+                onClick = { showHistoryDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 16.dp, bottom = 30.dp)
+            ) {
+                Text(
+                    "HISTORY",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            // FAB — bottom right
             FloatingActionButton(
                 onClick = { showAddDialog = true },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp).size(72.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp).size(64.dp),
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = MaterialTheme.colorScheme.onSurface,
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(28.dp))
             }
         }
     }
@@ -246,7 +218,7 @@ fun WeightTrackerScreen(viewModel: WeightViewModel) {
             showSettingsDialog = false
         }
     }
-    
+
     if (showHistoryDialog) {
         HistoryDialog(
             state = state,
@@ -258,22 +230,8 @@ fun WeightTrackerScreen(viewModel: WeightViewModel) {
 }
 
 @Composable
-fun MetricItem(label: String, value: String, isAccent: Boolean = false) {
-    Column(horizontalAlignment = Alignment.Start) {
-        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            value,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (isAccent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
-
-@Composable
 fun StatCard(label: String, projection: Double, change: Double, unit: String) {
-    Column(Modifier.width(100.dp)) {
+    Column(horizontalAlignment = Alignment.Start) {
         Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         Text(
@@ -299,12 +257,19 @@ fun HistoryDialog(
     onAddHistoric: (Int, Double) -> Unit
 ) {
     var isAdding by remember { mutableStateOf(false) }
-    
+
     AlertDialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.85f),
-        title = { Text("Historic Weights", fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif) },
+        modifier = Modifier.fillMaxWidth(0.92f),
+        title = {
+            Text(
+                "Historic Weights",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif
+            )
+        },
         text = {
             if (isAdding) {
                 var ageStr by remember { mutableStateOf("") }
@@ -338,7 +303,8 @@ fun HistoryDialog(
                     }
                 }
             } else {
-                LazyColumn {
+                // Natural-height list — no forced full-screen height
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                     items(state.allEntries) { entry ->
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -353,10 +319,18 @@ fun HistoryDialog(
                                     fontFamily = FontFamily.Serif
                                 )
                                 val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-                                Text(sdf.format(Date(entry.dateMillis)), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    sdf.format(Date(entry.dateMillis)),
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             IconButton(onClick = { onDelete(entry) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
                         Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
@@ -366,7 +340,13 @@ fun HistoryDialog(
         },
         confirmButton = {
             if (!isAdding) {
-                Button(onClick = { isAdding = true }) {
+                Button(
+                    onClick = { isAdding = true },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
                     Text("Add Historic Weight")
                 }
             }
@@ -417,7 +397,12 @@ fun SettingsDialog(state: WeightState, onDismiss: () -> Unit, onConfirm: (Double
         },
         confirmButton = {
             Button(onClick = {
-                onConfirm(startW.toDoubleOrNull() ?: 80.0, goalW.toDoubleOrNull() ?: 70.0, state.startDateMillis, state.goalDateMillis)
+                onConfirm(
+                    startW.toDoubleOrNull() ?: 80.0,
+                    goalW.toDoubleOrNull() ?: 70.0,
+                    state.startDateMillis,
+                    state.goalDateMillis
+                )
             }) { Text("Save") }
         }
     )

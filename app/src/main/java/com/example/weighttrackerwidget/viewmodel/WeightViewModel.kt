@@ -13,7 +13,6 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
 import kotlin.math.abs
-import kotlin.math.sin
 
 data class WeightState(
     val startingWeightKg: Double = 80.25,
@@ -228,17 +227,24 @@ class WeightViewModel(
                 trained.add(LifelongPoint(age, w))
                 untrained.add(LifelongPoint(age, w))
             } else {
+                // Trained path: reach goal weight around age 40, then slow creep with aging
                 val trainedW = if (age < 40) {
                     currentWeight - (currentWeight - targetExcellent) * (age - currentAge) / (40.0 - currentAge)
                 } else {
                     targetExcellent + (if (age > 60) (age - 60.0) * 0.1 else 0.0)
                 }
                 trained.add(LifelongPoint(age, trainedW))
-                
+
+                // Detraining path: partial progress then slow regain (~0.6 kg/year)
+                // Reaches ~55% of goal by year 4, then drifts back up
                 val yearsSinceNow = age - currentAge
-                val oscillation = 1.2 * sin(yearsSinceNow * 0.5)
-                val driftW = currentWeight + (yearsSinceNow * 0.1) + oscillation
-                untrained.add(LifelongPoint(age, driftW.coerceAtMost(86.0)))
+                val partialGoal = currentWeight - (currentWeight - targetExcellent) * 0.55
+                val detrained = if (yearsSinceNow <= 4.0) {
+                    currentWeight - (currentWeight - partialGoal) * (yearsSinceNow / 4.0)
+                } else {
+                    partialGoal + (yearsSinceNow - 4.0) * 0.6
+                }
+                untrained.add(LifelongPoint(age, detrained.coerceAtMost(currentWeight + 8.0)))
             }
         }
         
@@ -253,14 +259,20 @@ class WeightViewModel(
             historicPoints.maxOfOrNull { it.weight } ?: 100.0
         )
         
+        // Research-based zones for ~175cm male (BMI thresholds × height²)
+        // BMI 18.5 → 56.6 kg, BMI 22 → 67.4 kg, BMI 25 → 76.6 kg, BMI 27.5 → 84.2 kg
+        // Age adjustments: clinical guidelines allow slightly higher BMI at older ages
         return LifelongData(
             currentAge = currentAge,
             trainedPath = trained,
             untrainedPath = untrained,
             zones = LifelongZones(
-                underweight = { age -> 64.0 + (if (age > 60) (age - 60) * 0.2 else 0.0) },
-                excellent = { age -> 72.0 + (if (age > 60) (age - 60) * 0.15 else 0.0) },
-                acceptable = { age -> if (age < 65) 78.0 else 82.0 }
+                // Underweight upper bound: BMI 18.5 baseline, small rise after 65 (muscle/bone loss)
+                underweight = { age -> 56.5 + maxOf(0.0, (age - 65.0) * 0.18) },
+                // Excellent/healthy upper bound: BMI ~22.5 baseline, gradual rise after 50
+                excellent = { age -> 68.5 + maxOf(0.0, (age - 50.0) * 0.12) },
+                // Acceptable upper bound: BMI ~27 baseline, rises with age (clinical tolerance)
+                acceptable = { age -> 82.0 + maxOf(0.0, (age - 40.0) * 0.15).coerceAtMost(8.0) }
             ),
             minWeight = minWeight,
             maxWeight = maxWeight
