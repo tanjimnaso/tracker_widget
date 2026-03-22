@@ -17,5 +17,5 @@
     <color name="md_theme_dark_surfaceContainerLow">#201A18</color>
 
     <!-- Colors used for icon placeholders (can be adjusted later) -->
-    <color name="ic_launcher_background">#FF9800</color>
+    <color name="ic_launcher_background">#1C1B19</color>
 </resources>

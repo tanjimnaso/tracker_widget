@@ -8,14 +8,14 @@ import java.util.Calendar
 data class UserSettings(
     @PrimaryKey val id: Int = 0,
     val startingWeightKg: Double = 80.25,
-    val goalWeightKg: Double = 72.0,
     val startDateMillis: Long = Calendar.getInstance().apply {
         set(2023, Calendar.MARCH, 23, 0, 0)
     }.timeInMillis,
     val goalDateMillis: Long = Calendar.getInstance().apply {
-        set(2023, Calendar.JUNE, 23, 0, 0)
+        set(2026, Calendar.JUNE, 23, 0, 0)
     }.timeInMillis,
     val birthDateMillis: Long = Calendar.getInstance().apply {
-        set(1991, Calendar.JANUARY, 1, 0, 0) // Defaulting to 1991 for age 32 in 2023
-    }.timeInMillis
+        set(1993, Calendar.AUGUST, 1, 0, 0)
+    }.timeInMillis,
+    val heightCm: Double = 175.0
 )

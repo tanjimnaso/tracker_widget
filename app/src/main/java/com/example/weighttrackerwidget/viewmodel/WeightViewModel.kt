@@ -15,11 +15,13 @@ import java.util.Date
 import kotlin.math.abs
 
 data class WeightState(
+    val isLifelongMode: Boolean = false,
     val startingWeightKg: Double = 80.25,
     val goalWeightKg: Double = 72.0,
     val startDateMillis: Long = System.currentTimeMillis(),
     val goalDateMillis: Long = Calendar.getInstance().apply { add(Calendar.MONTH, 3) }.timeInMillis,
-    val birthDateMillis: Long = Calendar.getInstance().apply { set(1991, 0, 1) }.timeInMillis,
+    val birthDateMillis: Long = Calendar.getInstance().apply { set(1993, Calendar.AUGUST, 1) }.timeInMillis,
+    val heightCm: Double = 175.0,
     val currentWeightKg: Double? = null,
     val emaWeightKg: Double? = null,
     val totalLostKg: Double = 0.0,
@@ -66,7 +68,11 @@ class WeightViewModel(
     private val repository: WeightRepository
 ) : AndroidViewModel(application) {
 
-    private val _state = MutableStateFlow(WeightState())
+    private val prefs = application.getSharedPreferences("chart_prefs", android.content.Context.MODE_PRIVATE)
+
+    private val _state = MutableStateFlow(
+        WeightState(isLifelongMode = prefs.getBoolean("isLifelongMode", false))
+    )
     val state: StateFlow<WeightState> = _state.asStateFlow()
 
     companion object {
@@ -77,6 +83,11 @@ class WeightViewModel(
         loadData()
     }
 
+    fun setChartMode(isLifelong: Boolean) {
+        prefs.edit().putBoolean("isLifelongMode", isLifelong).apply()
+        _state.update { it.copy(isLifelongMode = isLifelong) }
+    }
+
     private fun loadData() {
         viewModelScope.launch {
             combine(repository.allEntries, repository.userSettings) { entries, settings ->
@@ -84,29 +95,35 @@ class WeightViewModel(
             }.collect { (entries, settings) ->
                 val currentSettings = settings ?: UserSettings()
                 
-                _state.update { 
+                // Goal weight auto-computed from height: BMI 22.5 (lean athletic target for
+                // strength training + mixed cardio). Not user-settable.
+                val h = currentSettings.heightCm / 100.0
+                val goalWeight = 22.5 * h * h
+
+                _state.update {
                     it.copy(
                         isLoading = true,
                         startingWeightKg = currentSettings.startingWeightKg,
-                        goalWeightKg = currentSettings.goalWeightKg,
+                        goalWeightKg = goalWeight,
                         startDateMillis = currentSettings.startDateMillis,
                         goalDateMillis = currentSettings.goalDateMillis,
-                        birthDateMillis = currentSettings.birthDateMillis
-                    ) 
+                        birthDateMillis = currentSettings.birthDateMillis,
+                        heightCm = currentSettings.heightCm
+                    )
                 }
-                
+
                 try {
                     val sortedEntries = entries.sortedBy { it.dateMillis }
-                    
+
                     val now = System.currentTimeMillis()
                     val oneYearAgo = now - 365L * 24 * 60 * 60 * 1000
                     val currentEntries = sortedEntries.filter { it.dateMillis >= oneYearAgo }
-                    
+
                     val chartPoints = calculateEma(currentEntries)
-                    
+
                     val latestEntry = currentEntries.lastOrNull()
                     val latestEma = chartPoints.lastOrNull()?.emaWeight ?: latestEntry?.weightKg ?: currentSettings.startingWeightKg
-                    val progress = calculateProgress(latestEma, currentSettings.startingWeightKg, currentSettings.goalWeightKg)
+                    val progress = calculateProgress(latestEma, currentSettings.startingWeightKg, goalWeight)
                     
                     val currentW = latestEntry?.weightKg ?: currentSettings.startingWeightKg
                     val totalLost = currentSettings.startingWeightKg - currentW
@@ -116,7 +133,21 @@ class WeightViewModel(
                     var age = nowCal.get(Calendar.YEAR) - birthCal.get(Calendar.YEAR)
                     if (nowCal.get(Calendar.DAY_OF_YEAR) < birthCal.get(Calendar.DAY_OF_YEAR)) age--
 
-                    val lifelong = generateLifelongData(age, latestEma, sortedEntries)
+                    val lifelong = generateLifelongData(age, latestEma, sortedEntries, currentSettings.heightCm)
+
+                    // EMA slope: use last 7 days if available, else default 0.6% body weight/week
+                    val rateKgPerDay = if (chartPoints.size >= 7) {
+                        val week = chartPoints.takeLast(7)
+                        (week.last().emaWeight - week.first().emaWeight) / 7.0
+                    } else {
+                        -(latestEma * 0.006 / 7.0)
+                    }
+
+                    val daysToGoal = maxOf(1L, (currentSettings.goalDateMillis - now) / (24L * 60 * 60 * 1000))
+                    val halfDays = (daysToGoal / 2).toInt()
+
+                    val weekChange = rateKgPerDay * 7.0
+                    val monthChange = rateKgPerDay * 30.0
 
                     _state.update {
                         it.copy(
@@ -129,13 +160,13 @@ class WeightViewModel(
                             allEntries = sortedEntries.reversed(),
                             isLoading = false,
                             errorMessage = if (entries.isEmpty()) "No weight entries found. Please add an entry." else null,
-                            
-                            thisWeekProjection = latestEma - 0.6,
-                            thisWeekChange = -0.6,
-                            monthEndProjection = latestEma - 1.7,
-                            monthEndChange = -1.7,
-                            halfwayWeight = (currentSettings.startingWeightKg + currentSettings.goalWeightKg) / 2,
-                            halfwayDays = 50 
+
+                            thisWeekProjection = latestEma + weekChange,
+                            thisWeekChange = weekChange,
+                            monthEndProjection = latestEma + monthChange,
+                            monthEndChange = monthChange,
+                            halfwayWeight = latestEma + rateKgPerDay * halfDays,
+                            halfwayDays = halfDays
                         )
                     }
                 } catch (e: Exception) {
@@ -165,7 +196,7 @@ class WeightViewModel(
         return chartPoints
     }
 
-    private fun generateLifelongData(currentAge: Int, currentWeight: Double, allEntries: List<WeightEntry>): LifelongData {
+    private fun generateLifelongData(currentAge: Int, currentWeight: Double, allEntries: List<WeightEntry>, heightCm: Double = 175.0): LifelongData {
         val trained = mutableListOf<LifelongPoint>()
         val untrained = mutableListOf<LifelongPoint>()
         
@@ -259,20 +290,17 @@ class WeightViewModel(
             historicPoints.maxOfOrNull { it.weight } ?: 100.0
         )
         
-        // Research-based zones for ~175cm male (BMI thresholds × height²)
-        // BMI 18.5 → 56.6 kg, BMI 22 → 67.4 kg, BMI 25 → 76.6 kg, BMI 27.5 → 84.2 kg
-        // Age adjustments: clinical guidelines allow slightly higher BMI at older ages
+        // Athletic BMI thresholds × height² — parameterised by actual heightCm
+        // BMI 19.3 = lower bound of athletic/lean; 25.5 = upper excellent; 28.8 = acceptable
+        val h = heightCm / 100.0
         return LifelongData(
             currentAge = currentAge,
             trainedPath = trained,
             untrainedPath = untrained,
             zones = LifelongZones(
-                // Underweight upper bound: BMI 18.5 baseline, small rise after 65 (muscle/bone loss)
-                underweight = { age -> 56.5 + maxOf(0.0, (age - 65.0) * 0.18) },
-                // Excellent/healthy upper bound: BMI ~22.5 baseline, gradual rise after 50
-                excellent = { age -> 68.5 + maxOf(0.0, (age - 50.0) * 0.12) },
-                // Acceptable upper bound: BMI ~27 baseline, rises with age (clinical tolerance)
-                acceptable = { age -> 82.0 + maxOf(0.0, (age - 40.0) * 0.15).coerceAtMost(8.0) }
+                underweight = { age -> 19.3 * h * h + maxOf(0.0, (age - 65.0) * 0.2) },
+                excellent   = { age -> 25.5 * h * h + maxOf(0.0, (age - 50.0) * 0.15) },
+                acceptable  = { age -> 28.8 * h * h + maxOf(0.0, (age - 40.0) * 0.2).coerceAtMost(5.0) }
             ),
             minWeight = minWeight,
             maxWeight = maxWeight
@@ -308,7 +336,6 @@ class WeightViewModel(
 
     fun updateSettings(
         startingWeight: Double,
-        goalWeight: Double,
         startDate: Long,
         goalDate: Long
     ) {
@@ -316,13 +343,46 @@ class WeightViewModel(
             repository.updateUserSettings(
                 UserSettings(
                     startingWeightKg = startingWeight,
-                    goalWeightKg = goalWeight,
                     startDateMillis = startDate,
                     goalDateMillis = goalDate,
-                    birthDateMillis = state.value.birthDateMillis
+                    birthDateMillis = state.value.birthDateMillis,
+                    heightCm = state.value.heightCm
                 )
             )
             WeightTrackerGlanceWidget.updateAll(getApplication())
+        }
+    }
+
+    fun updateHeight(heightCm: Double) {
+        viewModelScope.launch {
+            repository.updateUserSettings(
+                UserSettings(
+                    startingWeightKg = state.value.startingWeightKg,
+                    startDateMillis = state.value.startDateMillis,
+                    goalDateMillis = state.value.goalDateMillis,
+                    birthDateMillis = state.value.birthDateMillis,
+                    heightCm = heightCm
+                )
+            )
+            WeightTrackerGlanceWidget.updateAll(getApplication())
+        }
+    }
+
+    fun updateBirthYear(year: Int) {
+        viewModelScope.launch {
+            val cal = Calendar.getInstance().apply {
+                timeInMillis = state.value.birthDateMillis
+                set(Calendar.YEAR, year)
+            }
+            repository.updateUserSettings(
+                UserSettings(
+                    startingWeightKg = state.value.startingWeightKg,
+                    startDateMillis = state.value.startDateMillis,
+                    goalDateMillis = state.value.goalDateMillis,
+                    birthDateMillis = cal.timeInMillis,
+                    heightCm = state.value.heightCm
+                )
+            )
         }
     }
 }

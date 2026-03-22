@@ -40,7 +40,8 @@ object WeightTrackerGlanceWidget : GlanceAppWidget() {
             ?: com.example.weighttrackerwidget.UserSettings()
 
         val startingWeight = settings.startingWeightKg
-        val goalWeight = settings.goalWeightKg
+        val h = settings.heightCm / 100.0
+        val goalWeight = 22.5 * h * h
 
         // Only use entries from the past year — matches ViewModel behaviour and excludes
         // old historic entries (age 16 etc.) that skew the EMA away from current weight
@@ -244,13 +245,23 @@ object WeightTrackerGlanceWidget : GlanceAppWidget() {
         fun getX(ms: Long): Float = padL + ((ms - startMillis).toFloat() / totalTime) * chartW
         fun getY(w: Double): Float = padT + chartH - ((w - minY) / rangeY * chartH).toFloat()
 
-        if (filteredData.isNotEmpty()) {
+        // When no real data yet, synthesise a gentle downward slope so the chart isn't blank
+        val displayData = if (filteredData.isNotEmpty()) filteredData else {
+            val steps = 10
+            (0..steps).map { i ->
+                val t = startMillis + (totalTime * i / steps)
+                val w = startingWeight - (startingWeight - goalWeight) * i / steps * 0.3
+                ChartPoint(Date(t), w, w)
+            }
+        }
+
+        if (displayData.isNotEmpty()) {
             // Filled area under EMA line
             val fillPath = android.graphics.Path()
-            fillPath.moveTo(getX(filteredData.first().date.time), getY(filteredData.first().emaWeight))
-            filteredData.forEach { fillPath.lineTo(getX(it.date.time), getY(it.emaWeight)) }
-            fillPath.lineTo(getX(filteredData.last().date.time), padT + chartH)
-            fillPath.lineTo(getX(filteredData.first().date.time), padT + chartH)
+            fillPath.moveTo(getX(displayData.first().date.time), getY(displayData.first().emaWeight))
+            displayData.forEach { fillPath.lineTo(getX(it.date.time), getY(it.emaWeight)) }
+            fillPath.lineTo(getX(displayData.last().date.time), padT + chartH)
+            fillPath.lineTo(getX(displayData.first().date.time), padT + chartH)
             fillPath.close()
             canvas.drawPath(fillPath, Paint().apply {
                 color = accentRgb
@@ -261,8 +272,8 @@ object WeightTrackerGlanceWidget : GlanceAppWidget() {
 
             // EMA trend line
             val emaPath = android.graphics.Path()
-            emaPath.moveTo(getX(filteredData.first().date.time), getY(filteredData.first().emaWeight))
-            filteredData.forEach { emaPath.lineTo(getX(it.date.time), getY(it.emaWeight)) }
+            emaPath.moveTo(getX(displayData.first().date.time), getY(displayData.first().emaWeight))
+            displayData.forEach { emaPath.lineTo(getX(it.date.time), getY(it.emaWeight)) }
             canvas.drawPath(emaPath, Paint().apply {
                 color = accentRgb
                 strokeWidth = 5f
@@ -273,7 +284,7 @@ object WeightTrackerGlanceWidget : GlanceAppWidget() {
             })
 
             // Dot at latest data point
-            val last = filteredData.last()
+            val last = displayData.last()
             canvas.drawCircle(getX(last.date.time), getY(last.emaWeight), 8f, Paint().apply {
                 color = accentRgb
                 style = Paint.Style.FILL
