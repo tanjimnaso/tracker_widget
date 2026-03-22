@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.weighttrackerwidget.viewmodel.ChartPoint
@@ -149,6 +150,18 @@ fun CombinedChartSection(
                 )
             }
         }
+
+        // Watermark signature — 15% opacity, visible on close inspection
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "made by tanjim islam",
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Light,
+            letterSpacing = 1.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
